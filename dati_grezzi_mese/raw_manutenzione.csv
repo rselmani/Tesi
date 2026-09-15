@@ -1,0 +1,16 @@
+inizio_guasto;ripartenza;impianto;matricola_tecnico;descrizione_anomalia
+01/09/2026 18:30;2026/09/01 18:56:37;SOFF_ORIZZ_02;mat-0012;Mancanza pressione linea pneumatica
+02/09/2026 02:30:24;02-09-2026 03:14:24;SOFF_VERT_02;MAT-0005;Anomalia lettura termocoppia cassa d'anima
+03/09/2026 02:31:09;03-09-2026 03:19:09;SOFF_VERT_01;MAT-0004;Anomalia lettura termocoppia cassa d'anima
+04-09-2026 02:30:10;04/09/2026 03:01:10;SOFF_ORIZZ_02;MAT-0002;Anomalia lettura termocoppia cassa d'anima
+08/09/2026 02:30:29;08/09/2026 03:18;Soff_orizz_03;MAT-0003;Avaria resistenze elettriche semicassa
+11/09/2026 18:30:31;11/09/2026 19:02:31;SOFF_ORIZZ_02;MAT-0012;blocco slitta estrazione e ribaltamento
+2026/09/11 18:30:33;11/09/2026 19:12:33;SOFF_VERT_02;MAT-0015;Blocco slitta estrazione e ribaltamento
+14/09/2026 18:30;14-09-2026 19:09:42;soff_orizz_02;MAT-0012;  Avaria resistenze elettriche semicassa 
+15/09/2026 10:30:42;15/09/2026 11:04:42;SOFF_ORIZZ_03;mat-0008;Blocco slitta estrazione e ribaltamento
+16/09/2026 02:30:18;16/09/2026 03:08;SOFF_ORIZZ_02;Mat-0002;ugelli di sparo tappati
+2026/09/17 02:30:24;17/09/2026 03:19:24;SOFF_ORIZZ_03;  MAT-0003 ;Ugelli di sparo tappati
+21/09/2026 02:31:13;21-09-2026 03:05:13;soff_orizz_03;MAT-0003;Anomalia lettura termocoppia cassa d'anima
+22/09/2026 02:30;22/09/2026 03:02;Soff_orizz_01;MAT-0001;  Ugelli di sparo tappati 
+22/09/2026 18:30:30;22-09-2026 19:24:30;SOFF_VERT_02;MAT-0015;Anomalia lettura termocoppia cassa d'anima
+24/09/2026 10:31;24/09/2026 10:59;  SOFF_VERT_02 ;mat-0010;Mancanza pressione linea pneumatica
