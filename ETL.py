@@ -6,9 +6,9 @@ from psycopg2.extras import execute_batch
 DB_CONFIG = {
     "dbname": "postgres",
     "user": "postgres",
-    "password": "tesi", # <-- METTI LA TUA PASSWORD
+    "password": "", # <-- METTI LA TUA PASSWORD
     "host": "localhost",
-    "port": 5433,  # <-- LA TUA PORTA
+    "port": 5432,  # <-- LA TUA PORTA
 }
 
 CARTELLA = "dati_grezzi_mese"
