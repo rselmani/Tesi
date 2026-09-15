@@ -104,19 +104,36 @@ def main():
 
     print("[4/4] Caricamento Tabelle dei Fatti (Extract, Transform & Load)...")
     
-    # 1. FATTO QUALITA'
+    # 1. FATTO QUALITA' (CON NORMALIZZAZIONE PULITA DEI MOTIVI E CODICI DIFETTO)
     qual = []
     with open(f"{CARTELLA}/raw_qualita.csv", encoding="utf-8") as f:
         for r in csv.DictReader(f, delimiter=';'):
             dt = get_dataora(r["orario_collaudo"])
             scartati = int(r["scartati"])
-            c_dif, m_dif = get_s(r["cod_difetto"]), get_s(r["motivo"])
-            if scartati == 0 or c_dif in ["N/D", "N/A", "NESSUNO"]:
+            
+            c_dif = get_s(r["cod_difetto"])
+            m_dif = get_s(r["motivo"])
+            
+            # Normalizzazione stringhe difetto a monte
+            if c_dif:
+                c_dif = c_dif.strip().upper()
+                if c_dif in ["N/D", "N/A", "NESSUNO", "-", ""]:
+                    c_dif = None
+            if m_dif:
+                m_dif = m_dif.strip().lower()
+                if m_dif in ["n/d", "n/a", "nessuno", "-", "", " "]:
+                    m_dif = None
+                else:
+                    m_dif = m_dif.capitalize() # Prima lettera maiuscola pulita
+            
+            if scartati == 0 or not c_dif or not m_dif:
                 c_dif, m_dif = None, None
+
             qual.append((
                 d_box[r["id_contenitore_rif"].strip().upper()], int(dt.strftime("%Y%m%d")), d_op[r["ispettore"].strip().upper()], 
                 int(r["campione_pezzi"]), scartati, c_dif, m_dif, dt
             ))
+            
     cur.execute("TRUNCATE TABLE fatto_qualita RESTART IDENTITY CASCADE;")
     execute_batch(cur, "INSERT INTO fatto_qualita (id_contenitore, id_data, id_operatore, pezzi_controllati, pezzi_scartati, codice_difetto, motivo_scarto, timestamp_controllo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", qual)
 
@@ -129,7 +146,7 @@ def main():
             if ini > fin: ini, fin = fin, ini
             man.append((
                 int(ini.strftime("%Y%m%d")), 1 if ini.hour < 8 else (2 if ini.hour < 16 else 3), 
-                d_mac[r["impianto"].strip().upper()], d_op[r["matricola_tecnico"].strip().upper()], ini, fin, r["descrizione_anomalia"]
+                d_mac[r["impianto"].strip().upper()], d_op[r["matricola_tecnico"].strip().upper()], ini, fin, r["descrizione_anomalia"].strip()
             ))
     cur.execute("TRUNCATE TABLE fatto_manutenzione RESTART IDENTITY CASCADE;")
     execute_batch(cur, "INSERT INTO fatto_manutenzione (id_data, id_turno, id_macchina, id_operatore, timestamp_inizio, timestamp_fine, causa_guasto) VALUES (%s, %s, %s, %s, %s, %s, %s)", man)
@@ -160,11 +177,9 @@ def main():
     cur.execute("TRUNCATE TABLE fatto_consumi_risorse RESTART IDENTITY CASCADE;")
     execute_batch(cur, "INSERT INTO fatto_consumi_risorse (id_data, id_turno, id_macchina, consumo_elettrico_kwh, consumo_sabbia_kg, consumo_leganti_litri) VALUES (%s, %s, %s, %s, %s, %s)", cons)
 
-    # 5. FATTO PRODUZIONE (CON CONTROLLO COERENZA INI < FIN)
-# 5. FATTO PRODUZIONE (CON CONTROLLO COERENZA E DURATA MINIMA > 0)
-# 5. FATTO PRODUZIONE (CON DEDUPLICAZIONE E CONTROLLO DURATA)
+    # 5. FATTO PRODUZIONE
     prod = []
-    visti_macchina_tempo = set()  # Set per tracciare le coppie uniche (macchina, timestamp_inizio)
+    visti_macchina_tempo = set()
     
     with open(f"{CARTELLA}/raw_produzione.csv", encoding="utf-8") as f:
         for r in csv.DictReader(f, delimiter=';'):
@@ -179,12 +194,10 @@ def main():
             
             id_macchina = d_mac[r["linea"].strip().upper()]
             
-            # Controllo unicità: se la coppia (macchina, timestamp_inizio) esiste già, 
-            # spostiamo in avanti di 1 secondo l'avvio per evitare la violazione Unique.
             chiave_unica = (id_macchina, ini)
             while chiave_unica in visti_macchina_tempo:
                 ini = ini + datetime.timedelta(seconds=1)
-                if ini >= fin:  # Manteniamo la coerenza se sforiamo l'arresto
+                if ini >= fin:  
                     fin = ini + datetime.timedelta(seconds=1)
                 chiave_unica = (id_macchina, ini)
             
@@ -201,7 +214,7 @@ def main():
     conn.commit()
     cur.close()
     conn.close()
-    print("\n[SUCCESSO] ETL Completato! Tutti i controlli temporali e vincoli superati.")
+    print("\n[SUCCESSO] ETL Completato con pulizia stringhe e normalizzazione dati a monte!")
 
 if __name__ == "__main__":
     main()
