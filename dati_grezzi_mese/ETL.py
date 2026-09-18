@@ -2,13 +2,14 @@ import csv
 import datetime
 import psycopg2
 from psycopg2.extras import execute_batch
+import os
 
 DB_CONFIG = {
     "dbname": "postgres",
     "user": "postgres",
-    "password": "", # <-- METTI LA TUA PASSWORD
+    "password": os.environ.get("PGPASSWORD", ""),
     "host": "localhost",
-    "port": 5432,  # <-- LA TUA PORTA
+    "port": 5432,  
 }
 
 CARTELLA = "dati_grezzi_mese"
