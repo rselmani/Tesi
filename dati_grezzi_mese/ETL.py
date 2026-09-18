@@ -23,17 +23,43 @@ def main():
     cur.execute("TRUNCATE TABLE dim_data CASCADE;")
     data_rows = []
     giorni = {0: "lunedì", 1: "martedì", 2: "mercoledì", 3: "giovedì", 4: "venerdì", 5: "sabato", 6: "domenica"}
-    
+
+    # Festivita' civili e religiose italiane del 2026 (nessuna cade a settembre)
+    festivita = {
+        datetime.date(2026, 1, 1), datetime.date(2026, 1, 6), datetime.date(2026, 4, 6),
+        datetime.date(2026, 4, 25), datetime.date(2026, 5, 1), datetime.date(2026, 6, 2),
+        datetime.date(2026, 8, 15), datetime.date(2026, 11, 1), datetime.date(2026, 12, 8),
+        datetime.date(2026, 12, 25), datetime.date(2026, 12, 26),
+    }
+
     data_partenza = datetime.date(2026, 9, 1)
     for i in range(30): 
         d = data_partenza + datetime.timedelta(days=i)
-        data_rows.append((int(d.strftime("%Y%m%d")), d, d.day, d.month, d.year, giorni[d.weekday()], int(d.strftime("%V")), d.weekday() >= 5))
+        data_rows.append((int(d.strftime("%Y%m%d")), d, d.day, d.month, d.year, giorni[d.weekday()], int(d.strftime("%V")), d.weekday() >= 5, d in festivita))
     
-    execute_batch(cur, "INSERT INTO dim_data (id_data, data, giorno, mese, anno, giorno_settimana, settimana_anno, is_festivo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", data_rows)
+    execute_batch(cur, "INSERT INTO dim_data (id_data, data, giorno, mese, anno, giorno_settimana, settimana_anno, is_weekend, is_festivo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", data_rows)
 
     cur.execute("TRUNCATE TABLE dim_turno RESTART IDENTITY CASCADE;")
-    execute_batch(cur, "INSERT INTO dim_turno (fascia_oraria, descrizione) VALUES (%s, %s)", [
-        ("00:00:00", "Turno 1"), ("08:00:00", "Turno 2"), ("16:00:00", "Turno 3")
+    execute_batch(cur, "INSERT INTO dim_turno (ora_inizio, ora_fine, durata_minuti, descrizione) VALUES (%s, %s, %s, %s)", [
+        ("00:00:00", "08:00:00", 480, "Turno 1"),
+        ("08:00:00", "16:00:00", 480, "Turno 2"),
+        ("16:00:00", "00:00:00", 480, "Turno 3"),
+    ])
+
+    cur.execute("TRUNCATE TABLE dim_causale_fermo RESTART IDENTITY CASCADE;")
+    execute_batch(cur, "INSERT INTO dim_causale_fermo (codice_causale, descrizione, categoria) VALUES (%s, %s, %s)", [
+        ("CAU-01", "Anomalia lettura termocoppia cassa d'anima", "Elettrico"),
+        ("CAU-02", "Ugelli di sparo tappati", "Meccanico"),
+        ("CAU-03", "Mancanza pressione linea pneumatica", "Pneumatico"),
+        ("CAU-04", "Blocco slitta estrazione e ribaltamento", "Meccanico"),
+        ("CAU-05", "Avaria resistenze elettriche semicassa", "Elettrico"),
+    ])
+
+    cur.execute("TRUNCATE TABLE dim_difetto RESTART IDENTITY CASCADE;")
+    execute_batch(cur, "INSERT INTO dim_difetto (codice_difetto, descrizione) VALUES (%s, %s)", [
+        ("DIF-01", "Anima rotta"),
+        ("DIF-02", "Anima piena"),
+        ("DIF-03", "Anima fuori tolleranza"),
     ])
 
     cur.execute("TRUNCATE TABLE dim_macchina RESTART IDENTITY CASCADE;")
@@ -74,6 +100,33 @@ def main():
     
     cur.execute("SELECT codice_contenitore, id_contenitore FROM dim_contenitore;")
     d_box = {k.upper(): v for k, v in cur.fetchall()}
+
+    cur.execute("SELECT descrizione, id_causale FROM dim_causale_fermo;")
+    d_causale = {k.upper(): v for k, v in cur.fetchall()}
+
+    cur.execute("SELECT codice_difetto, id_difetto FROM dim_difetto;")
+    d_difetto = {k.upper(): v for k, v in cur.fetchall()}
+
+    # turni ordinati per ora di inizio: l'id del turno si ricava dall'orario
+    cur.execute("SELECT id_turno, ora_inizio FROM dim_turno ORDER BY ora_inizio;")
+    turni = [(t[1].hour, t[0]) for t in cur.fetchall()]
+
+    def id_turno_di(istante):
+        """Turno a cui appartiene un evento, in base all'ora di inizio."""
+        scelto = turni[0][1]
+        for ora, id_t in turni:
+            if istante.hour >= ora:
+                scelto = id_t
+        return scelto
+
+    # CALENDARIO DI PRODUZIONE PIANIFICATA (tabella dei fatti senza misure)
+    cur.execute("TRUNCATE TABLE fatto_calendario_produzione;")
+    cur.execute("SELECT id_data FROM dim_data WHERE NOT is_weekend AND NOT is_festivo;")
+    giorni_lavorativi = [r[0] for r in cur.fetchall()]
+    calendario = [(g, t[1], m) for g in giorni_lavorativi for t in turni for m in d_mac.values()]
+    execute_batch(cur, "INSERT INTO fatto_calendario_produzione (id_data, id_turno, id_macchina) VALUES (%s, %s, %s)", calendario)
+    conn.commit()
+    print(f"      Turni pianificati: {len(calendario)}")
 
     limite_inizio = datetime.datetime(2026, 9, 1, 0, 0, 0)
     limite_fine = datetime.datetime(2026, 9, 30, 23, 59, 59)
@@ -129,14 +182,16 @@ def main():
             if scartati == 0 or not c_dif or not m_dif:
                 c_dif, m_dif = None, None
 
+            id_difetto = d_difetto[c_dif] if c_dif else None
+
             qual.append((
                 r["id_lotto"].strip().upper(),
                 d_box[r["id_contenitore_rif"].strip().upper()], int(dt.strftime("%Y%m%d")), d_op[r["ispettore"].strip().upper()], 
-                int(r["campione_pezzi"]), scartati, c_dif, m_dif, dt
+                int(r["campione_pezzi"]), scartati, id_difetto, dt
             ))
             
     cur.execute("TRUNCATE TABLE fatto_qualita RESTART IDENTITY CASCADE;")
-    execute_batch(cur, "INSERT INTO fatto_qualita (id_lotto, id_contenitore, id_data, id_operatore, pezzi_controllati, pezzi_scartati, codice_difetto, motivo_scarto, timestamp_controllo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", qual)
+    execute_batch(cur, "INSERT INTO fatto_qualita (id_lotto, id_contenitore, id_data, id_operatore, pezzi_controllati, pezzi_scartati, id_difetto, timestamp_controllo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", qual)
 
     # 2. FATTO MANUTENZIONE
     man = []
@@ -146,11 +201,12 @@ def main():
             fin = get_dataora(r["ripartenza"])
             if ini > fin: ini, fin = fin, ini
             man.append((
-                int(ini.strftime("%Y%m%d")), 1 if ini.hour < 8 else (2 if ini.hour < 16 else 3), 
-                d_mac[r["impianto"].strip().upper()], d_op[r["matricola_tecnico"].strip().upper()], ini, fin, r["descrizione_anomalia"].strip()
+                int(ini.strftime("%Y%m%d")), id_turno_di(ini), 
+                d_mac[r["impianto"].strip().upper()], d_op[r["matricola_tecnico"].strip().upper()], ini, fin,
+                d_causale[r["descrizione_anomalia"].strip().upper()]
             ))
     cur.execute("TRUNCATE TABLE fatto_manutenzione RESTART IDENTITY CASCADE;")
-    execute_batch(cur, "INSERT INTO fatto_manutenzione (id_data, id_turno, id_macchina, id_operatore, timestamp_inizio, timestamp_fine, causa_guasto) VALUES (%s, %s, %s, %s, %s, %s, %s)", man)
+    execute_batch(cur, "INSERT INTO fatto_manutenzione (id_data, id_turno, id_macchina, id_operatore, timestamp_inizio, timestamp_fine, id_causale) VALUES (%s, %s, %s, %s, %s, %s, %s)", man)
 
     # 3. FATTO ATTREZZAGGI
     attr = []
@@ -160,7 +216,7 @@ def main():
             fin = get_dataora(r["fine_setup"])
             if ini > fin: ini, fin = fin, ini
             attr.append((
-                int(ini.strftime("%Y%m%d")), 1 if ini.hour < 8 else (2 if ini.hour < 16 else 3), 
+                int(ini.strftime("%Y%m%d")), id_turno_di(ini), 
                 d_mac[r["impianto"].strip().upper()], int(r["stampo_montato"]), d_op[r["matricola_addetto"].strip().upper()], ini, fin
             ))
     cur.execute("TRUNCATE TABLE fatto_attrezzaggi RESTART IDENTITY CASCADE;")
@@ -206,7 +262,7 @@ def main():
             
             prod.append((
                 r["id_lotto"].strip().upper(),
-                int(ini.strftime("%Y%m%d")), 1 if ini.hour < 8 else (2 if ini.hour < 16 else 3), 
+                int(ini.strftime("%Y%m%d")), id_turno_di(ini), 
                 id_macchina, int(r["cod_stampo_rif"]), d_op[r["badge_operatore"].strip().upper()], d_box[r["box_destinazione"].strip().upper()],
                 ini, fin, int(r["pezzi_estratti"]), int(r["scarti_rilevati_plc"]), get_f(r["temperatura_letta"]), get_f(r["pressione_rilevata"])
             ))

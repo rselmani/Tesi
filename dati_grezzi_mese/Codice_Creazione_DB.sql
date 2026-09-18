@@ -1,8 +1,11 @@
+DROP TABLE IF EXISTS fatto_calendario_produzione CASCADE;
 DROP TABLE IF EXISTS fatto_attrezzaggi CASCADE;
 DROP TABLE IF EXISTS fatto_manutenzione CASCADE;
 DROP TABLE IF EXISTS fatto_qualita CASCADE;
 DROP TABLE IF EXISTS fatto_consumi_risorse CASCADE;
 DROP TABLE IF EXISTS fatto_produzione_processo CASCADE;
+DROP TABLE IF EXISTS dim_difetto CASCADE;
+DROP TABLE IF EXISTS dim_causale_fermo CASCADE;
 DROP TABLE IF EXISTS dim_contenitore CASCADE;
 DROP TABLE IF EXISTS dim_operatore CASCADE;
 DROP TABLE IF EXISTS dim_stampo_anima CASCADE;
@@ -18,13 +21,31 @@ CREATE TABLE dim_data (
     anno SMALLINT NOT NULL,
     giorno_settimana VARCHAR(9) NOT NULL,
     settimana_anno SMALLINT NOT NULL CHECK (settimana_anno BETWEEN 1 AND 53),
-    is_festivo BOOLEAN NOT NULL
+    is_weekend BOOLEAN NOT NULL,  -- sabato o domenica
+    is_festivo BOOLEAN NOT NULL   -- festivita' civile o religiosa
 );
 
 CREATE TABLE dim_turno (
     id_turno BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    fascia_oraria TIME NOT NULL,
+    ora_inizio TIME NOT NULL UNIQUE,
+    ora_fine TIME NOT NULL,
+    durata_minuti SMALLINT NOT NULL CHECK (durata_minuti > 0),
     descrizione VARCHAR(50) NOT NULL
+);
+
+-- Anagrafica delle causali di fermo: il testo esce dalla tabella dei fatti
+CREATE TABLE dim_causale_fermo (
+    id_causale BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    codice_causale VARCHAR(10) NOT NULL UNIQUE,
+    descrizione VARCHAR(100) NOT NULL UNIQUE,
+    categoria VARCHAR(20) NOT NULL
+);
+
+-- Anagrafica dei difetti rilevati al collaudo
+CREATE TABLE dim_difetto (
+    id_difetto BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    codice_difetto VARCHAR(10) NOT NULL UNIQUE,
+    descrizione VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE dim_macchina (
@@ -96,7 +117,7 @@ CREATE TABLE fatto_manutenzione (
     durata_fermo_minuti NUMERIC(7,2) GENERATED ALWAYS AS (
         ROUND((EXTRACT(EPOCH FROM (timestamp_fine - timestamp_inizio)) / 60.0)::numeric, 2)
     ) STORED,
-    causa_guasto VARCHAR(100) NOT NULL
+    id_causale BIGINT NOT NULL REFERENCES dim_causale_fermo(id_causale)
 );
 
 CREATE TABLE fatto_attrezzaggi (
@@ -120,12 +141,20 @@ CREATE TABLE fatto_qualita (
     id_operatore BIGINT NOT NULL REFERENCES dim_operatore(id_operatore),
     pezzi_controllati INTEGER NOT NULL CHECK (pezzi_controllati > 0),
     pezzi_scartati INTEGER NOT NULL CHECK (pezzi_scartati <= pezzi_controllati),
-    codice_difetto VARCHAR(10) CHECK (
-        (pezzi_scartati > 0 AND codice_difetto IS NOT NULL) OR 
-        (pezzi_scartati = 0 AND codice_difetto IS NULL)
-    ),
-    motivo_scarto VARCHAR(100),
-    timestamp_controllo TIMESTAMPTZ NOT NULL
+    id_difetto BIGINT REFERENCES dim_difetto(id_difetto),
+    timestamp_controllo TIMESTAMPTZ NOT NULL,
+    CHECK (
+        (pezzi_scartati > 0 AND id_difetto IS NOT NULL) OR
+        (pezzi_scartati = 0 AND id_difetto IS NULL)
+    )
+);
+
+-- Tabella dei fatti senza misure (factless): dichiara i turni schedulati
+CREATE TABLE fatto_calendario_produzione (
+    id_data INTEGER NOT NULL REFERENCES dim_data(id_data),
+    id_turno BIGINT NOT NULL REFERENCES dim_turno(id_turno),
+    id_macchina BIGINT NOT NULL REFERENCES dim_macchina(id_macchina),
+    PRIMARY KEY (id_data, id_turno, id_macchina)
 );
 
 CREATE INDEX idx_produzione_lotto ON fatto_produzione_processo (id_lotto);
