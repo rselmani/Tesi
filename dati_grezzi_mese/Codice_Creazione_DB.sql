@@ -10,11 +10,6 @@ DROP TABLE IF EXISTS dim_macchina CASCADE;
 DROP TABLE IF EXISTS dim_turno CASCADE;
 DROP TABLE IF EXISTS dim_data CASCADE;
 
-
--- -------------------------------------------------------------
--- TABELLE DIMENSIONALI
--- -------------------------------------------------------------
--- Tabella 2: dim_data
 CREATE TABLE dim_data (
     id_data INTEGER PRIMARY KEY, -- formato AAAAMMGG
     data DATE NOT NULL UNIQUE,
@@ -26,14 +21,12 @@ CREATE TABLE dim_data (
     is_festivo BOOLEAN NOT NULL
 );
 
--- Tabella 3: dim_turno
 CREATE TABLE dim_turno (
     id_turno BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     fascia_oraria TIME NOT NULL,
     descrizione VARCHAR(50) NOT NULL
 );
 
--- Tabella 4: dim_macchina
 CREATE TABLE dim_macchina (
     id_macchina BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     codice_macchina VARCHAR(20) NOT NULL UNIQUE,
@@ -41,14 +34,12 @@ CREATE TABLE dim_macchina (
     reparto VARCHAR(30) NOT NULL
 );
 
--- Tabella 5: dim_stampo_anima
 CREATE TABLE dim_stampo_anima (
     id_stampo BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     numero_figure SMALLINT NOT NULL CHECK (numero_figure BETWEEN 1 AND 2),
     tempo_ciclo_ideale_sec NUMERIC(6,2) NOT NULL CHECK (tempo_ciclo_ideale_sec > 0)
 );
 
--- Tabella 6: dim_operatore
 CREATE TABLE dim_operatore (
     id_operatore BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     matricola VARCHAR(10) NOT NULL UNIQUE,
@@ -56,7 +47,6 @@ CREATE TABLE dim_operatore (
     qualifica VARCHAR(30) NOT NULL
 );
 
--- Tabella 7: dim_contenitore
 CREATE TABLE dim_contenitore (
     id_contenitore BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     codice_contenitore VARCHAR(20) NOT NULL UNIQUE,
@@ -64,12 +54,9 @@ CREATE TABLE dim_contenitore (
     numero_scatole_nel_bancale SMALLINT NOT NULL CHECK (numero_scatole_nel_bancale BETWEEN 0 AND 8)
 );
 
--- -------------------------------------------------------------
--- TABELLE DEI FATTI
--- -------------------------------------------------------------
--- Tabella 8: fatto_produzione_processo
 CREATE TABLE fatto_produzione_processo (
     id_ciclo BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_lotto VARCHAR(30) NOT NULL, -- dimensione degenere: identifica il riempimento del contenitore
     id_data INTEGER NOT NULL REFERENCES dim_data(id_data),
     id_turno BIGINT NOT NULL REFERENCES dim_turno(id_turno),
     id_macchina BIGINT NOT NULL REFERENCES dim_macchina(id_macchina),
@@ -87,7 +74,6 @@ CREATE TABLE fatto_produzione_processo (
     ) STORED,
     CONSTRAINT uq_macchina_inizio UNIQUE (id_macchina, timestamp_inizio)
 );
--- Tabella 9: fatto_consumi_risorse
 CREATE TABLE fatto_consumi_risorse (
     id_consumo BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_data INTEGER NOT NULL REFERENCES dim_data(id_data),
@@ -99,7 +85,6 @@ CREATE TABLE fatto_consumi_risorse (
     CONSTRAINT uq_consumo_turno_macchina UNIQUE (id_data, id_turno, id_macchina)
 );
 
--- Tabella 10: fatto_manutenzione
 CREATE TABLE fatto_manutenzione (
     id_manutenzione BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_data INTEGER NOT NULL REFERENCES dim_data(id_data),
@@ -114,7 +99,6 @@ CREATE TABLE fatto_manutenzione (
     causa_guasto VARCHAR(100) NOT NULL
 );
 
--- Tabella 11: fatto_attrezzaggi
 CREATE TABLE fatto_attrezzaggi (
     id_attrezzaggio BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_data INTEGER NOT NULL REFERENCES dim_data(id_data),
@@ -128,9 +112,9 @@ CREATE TABLE fatto_attrezzaggi (
         ROUND((EXTRACT(EPOCH FROM (timestamp_fine - timestamp_inizio)) / 60.0)::numeric, 2)
     ) STORED
 );
--- Tabella 12: fatto_qualita
 CREATE TABLE fatto_qualita (
     id_controllo BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_lotto VARCHAR(30) NOT NULL UNIQUE, -- un solo collaudo per lotto
     id_contenitore BIGINT NOT NULL REFERENCES dim_contenitore(id_contenitore),
     id_data INTEGER NOT NULL REFERENCES dim_data(id_data),
     id_operatore BIGINT NOT NULL REFERENCES dim_operatore(id_operatore),
@@ -143,3 +127,5 @@ CREATE TABLE fatto_qualita (
     motivo_scarto VARCHAR(100),
     timestamp_controllo TIMESTAMPTZ NOT NULL
 );
+
+CREATE INDEX idx_produzione_lotto ON fatto_produzione_processo (id_lotto);

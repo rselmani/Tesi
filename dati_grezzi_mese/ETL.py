@@ -130,12 +130,13 @@ def main():
                 c_dif, m_dif = None, None
 
             qual.append((
+                r["id_lotto"].strip().upper(),
                 d_box[r["id_contenitore_rif"].strip().upper()], int(dt.strftime("%Y%m%d")), d_op[r["ispettore"].strip().upper()], 
                 int(r["campione_pezzi"]), scartati, c_dif, m_dif, dt
             ))
             
     cur.execute("TRUNCATE TABLE fatto_qualita RESTART IDENTITY CASCADE;")
-    execute_batch(cur, "INSERT INTO fatto_qualita (id_contenitore, id_data, id_operatore, pezzi_controllati, pezzi_scartati, codice_difetto, motivo_scarto, timestamp_controllo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", qual)
+    execute_batch(cur, "INSERT INTO fatto_qualita (id_lotto, id_contenitore, id_data, id_operatore, pezzi_controllati, pezzi_scartati, codice_difetto, motivo_scarto, timestamp_controllo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", qual)
 
     # 2. FATTO MANUTENZIONE
     man = []
@@ -204,13 +205,14 @@ def main():
             visti_macchina_tempo.add(chiave_unica)
             
             prod.append((
+                r["id_lotto"].strip().upper(),
                 int(ini.strftime("%Y%m%d")), 1 if ini.hour < 8 else (2 if ini.hour < 16 else 3), 
                 id_macchina, int(r["cod_stampo_rif"]), d_op[r["badge_operatore"].strip().upper()], d_box[r["box_destinazione"].strip().upper()],
                 ini, fin, int(r["pezzi_estratti"]), int(r["scarti_rilevati_plc"]), get_f(r["temperatura_letta"]), get_f(r["pressione_rilevata"])
             ))
             
     cur.execute("TRUNCATE TABLE fatto_produzione_processo RESTART IDENTITY CASCADE;")
-    execute_batch(cur, "INSERT INTO fatto_produzione_processo (id_data, id_turno, id_macchina, id_stampo, id_operatore, id_contenitore, timestamp_inizio, timestamp_fine, pezzi_prodotti, pezzi_scartati_plc, temperatura_cassa_c, pressione_soffiaggio_bar) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", prod)
+    execute_batch(cur, "INSERT INTO fatto_produzione_processo (id_lotto, id_data, id_turno, id_macchina, id_stampo, id_operatore, id_contenitore, timestamp_inizio, timestamp_fine, pezzi_prodotti, pezzi_scartati_plc, temperatura_cassa_c, pressione_soffiaggio_bar) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", prod)
     conn.commit()
     cur.close()
     conn.close()
